@@ -1,0 +1,22 @@
+{"frames": [
+
+{
+	"filename": "Left",
+	"frame": {"x":1,"y":1,"w":46,"h":50},
+	"rotated": false,
+	"trimmed": true,
+	"spriteSourceSize": {"x":2,"y":0,"w":46,"h":50},
+	"sourceSize": {"w":50,"h":50}
+},
+{
+	"filename": "Right",
+	"frame": {"x":1,"y":53,"w":46,"h":50},
+	"rotated": false,
+	"trimmed": true,
+	"spriteSourceSize": {"x":2,"y":0,"w":46,"h":50},
+	"sourceSize": {"w":50,"h":50}
+}],
+"meta": {
+	"app": "Spritor"
+}
+}
