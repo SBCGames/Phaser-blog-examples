@@ -1,3 +1,8 @@
+var __extends = (this && this.__extends) || function (d, b) {
+    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+};
 var Spriter;
 (function (Spriter) {
     var IdNameMap = (function () {
@@ -38,8 +43,97 @@ var Spriter;
             configurable: true
         });
         return IdNameMap;
-    })();
+    }());
     Spriter.IdNameMap = IdNameMap;
+})(Spriter || (Spriter = {}));
+var Spriter;
+(function (Spriter) {
+    var LineStepper = (function () {
+        // -------------------------------------------------------------------------
+        function LineStepper() {
+            this.reset();
+        }
+        Object.defineProperty(LineStepper.prototype, "current", {
+            // -------------------------------------------------------------------------
+            get: function () {
+                return this._line.at(this._currentIndex);
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(LineStepper.prototype, "currentIndex", {
+            // -------------------------------------------------------------------------
+            get: function () {
+                return this._currentIndex;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(LineStepper.prototype, "next", {
+            // -------------------------------------------------------------------------
+            get: function () {
+                return this._line.at(this._nextIndex);
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(LineStepper.prototype, "nextIndex", {
+            // -------------------------------------------------------------------------
+            get: function () {
+                return this._nextIndex;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(LineStepper.prototype, "lastTime", {
+            // -------------------------------------------------------------------------
+            set: function (time) {
+                this._lastTime = time;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        Object.defineProperty(LineStepper.prototype, "line", {
+            // -------------------------------------------------------------------------
+            get: function () {
+                return this._line;
+            },
+            // -------------------------------------------------------------------------
+            set: function (line) {
+                this._line = line;
+            },
+            enumerable: true,
+            configurable: true
+        });
+        // -------------------------------------------------------------------------
+        LineStepper.prototype.reset = function () {
+            this._lastTime = -1;
+            this._currentIndex = -1;
+            this._nextIndex = 0;
+        };
+        // -------------------------------------------------------------------------
+        LineStepper.prototype.step = function (time) {
+            var index = this._nextIndex;
+            // get key at current position
+            var key = this._line.keys[index];
+            var keyTime = key.time;
+            // if current key time is bigger than time for stepTo, then we must first go till end of timeline and then continue from beginning
+            var loop = time < this._lastTime;
+            if ((!loop && (keyTime > this._lastTime && keyTime <= time)) ||
+                (loop && (keyTime > this._lastTime || keyTime <= time))) {
+                this._lastTime = keyTime;
+                this._currentIndex = index;
+                if ((++index) >= this._line.keys.length) {
+                    index = 0;
+                }
+                this._nextIndex = index;
+                return key;
+            }
+            return null;
+        };
+        return LineStepper;
+    }());
+    Spriter.LineStepper = LineStepper;
 })(Spriter || (Spriter = {}));
 var Spriter;
 (function (Spriter) {
@@ -155,7 +249,7 @@ var Spriter;
             return tags;
         };
         return NodeListBin;
-    })();
+    }());
     Spriter.NodeListBin = NodeListBin;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -284,7 +378,7 @@ var Spriter;
             return tags;
         };
         return NodeListJSON;
-    })();
+    }());
     Spriter.NodeListJSON = NodeListJSON;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -401,7 +495,7 @@ var Spriter;
             return tags;
         };
         return NodeListXml;
-    })();
+    }());
     Spriter.NodeListXml = NodeListXml;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -412,29 +506,54 @@ var Spriter;
         eFileType[eFileType["BIN"] = 2] = "BIN";
     })(Spriter.eFileType || (Spriter.eFileType = {}));
     var eFileType = Spriter.eFileType;
+    (function (eImageNameType) {
+        eImageNameType[eImageNameType["ORIGINAL"] = 0] = "ORIGINAL";
+        eImageNameType[eImageNameType["NAME_ONLY"] = 1] = "NAME_ONLY";
+        eImageNameType[eImageNameType["NAME_AND_EXTENSION"] = 2] = "NAME_AND_EXTENSION";
+        eImageNameType[eImageNameType["FULL_PATH_NO_EXTENSION"] = 3] = "FULL_PATH_NO_EXTENSION";
+    })(Spriter.eImageNameType || (Spriter.eImageNameType = {}));
+    var eImageNameType = Spriter.eImageNameType;
     var SpriterFile = (function () {
-        function SpriterFile() {
+        // -------------------------------------------------------------------------
+        function SpriterFile(options) {
+            var hasOptions = typeof options !== "undefined" && options !== null;
+            // type of image names (path / name / extension)
+            this._imageNameType = (hasOptions && typeof options.imageNameType !== "undefined") ? options.imageNameType : eImageNameType.NAME_ONLY;
+            // min defs are present?
+            this._minDefs = (hasOptions && typeof options.minDefs !== "undefined") ? options.minDefs : null;
         }
         // -------------------------------------------------------------------------
         SpriterFile.prototype.processed = function () {
             this.popMinDefsStack();
         };
         // -------------------------------------------------------------------------
-        SpriterFile.prototype.setMinimized = function (minimized, minDefs) {
-            if (minDefs === void 0) { minDefs = null; }
+        SpriterFile.prototype.setMinimized = function (minimized) {
             this._minimized = minimized;
-            this._minDefs = minDefs;
             if (minimized) {
                 this._minDefsStack = [];
-                if (minDefs === null) {
+                if (this._minDefs === null) {
                     console.error("Spriter file is minimized - you must provide object with name definitions");
                     return;
                 }
             }
         };
         // -------------------------------------------------------------------------
-        SpriterFile.prototype.getFileNameWithoutExtension = function (path) {
-            var name = (path.split('\\').pop().split('/').pop().split('.'))[0];
+        SpriterFile.prototype.getFileName = function (path) {
+            var name;
+            switch (this._imageNameType) {
+                case eImageNameType.NAME_ONLY:
+                    name = (path.split('\\').pop().split('/').pop().split('.'))[0];
+                    break;
+                case eImageNameType.NAME_AND_EXTENSION:
+                    name = path.split('\\').pop().split('/').pop();
+                    break;
+                case eImageNameType.FULL_PATH_NO_EXTENSION:
+                    name = (path.split('.'))[0];
+                    break;
+                case eImageNameType.ORIGINAL:
+                    name = path;
+                    break;
+            }
             return name;
         };
         // -------------------------------------------------------------------------
@@ -487,22 +606,17 @@ var Spriter;
             }
         };
         return SpriterFile;
-    })();
+    }());
     Spriter.SpriterFile = SpriterFile;
 })(Spriter || (Spriter = {}));
 /// <reference path="SpriterFile.ts" />
-var __extends = (this && this.__extends) || function (d, b) {
-    for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-    function __() { this.constructor = d; }
-    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-};
 var Spriter;
 (function (Spriter) {
     var SpriterBin = (function (_super) {
         __extends(SpriterBin, _super);
         // -------------------------------------------------------------------------
         function SpriterBin(binData) {
-            _super.call(this);
+            _super.call(this, null);
             this._elements = {
                 "spriter_data": 1,
                 "folder": 2,
@@ -568,7 +682,7 @@ var Spriter;
         };
         // -------------------------------------------------------------------------
         SpriterBin.prototype.readFixed1_7 = function () {
-            var value = this._bin.getInt32(this._tmpPosition++) & 0xFF;
+            var value = this._bin.getInt8(this._tmpPosition++) & 0xFF;
             return value / 128;
         };
         // -------------------------------------------------------------------------
@@ -652,7 +766,7 @@ var Spriter;
                         break;
                 }
             }
-            return new Spriter.File(id, this.getFileNameWithoutExtension(name), pivotX, 1 - pivotY);
+            return new Spriter.File(id, this.getFileName(name), pivotX, 1 - pivotY);
         };
         // -------------------------------------------------------------------------
         SpriterBin.prototype.getTag = function (position) {
@@ -680,7 +794,7 @@ var Spriter;
         SpriterBin.prototype.getObjectInfo = function (position, index) {
             this._tmpPosition = this.getAttribsPosition(position);
             var name = "";
-            var type = Spriter.eObjectType.SPRITE;
+            var type = 0 /* SPRITE */;
             var width = 0;
             var height = 0;
             for (var i = this._bin.getUint8(this._tmpPosition++) - 1; i >= 0; i--) {
@@ -690,7 +804,7 @@ var Spriter;
                         break;
                     case SpriterBin.ATTR_OBJ_INFO_TYPE:
                         if (this.readUint8() === 1) {
-                            type = Spriter.eObjectType.BONE;
+                            type = 1 /* BONE */;
                         }
                         break;
                     case SpriterBin.ATTR_OBJ_INFO_WIDTH:
@@ -828,7 +942,7 @@ var Spriter;
             var id = 0;
             var name = "";
             var obj = 0;
-            var type = Spriter.eObjectType.SPRITE;
+            var type = 0 /* SPRITE */;
             for (var i = this._bin.getUint8(this._tmpPosition++) - 1; i >= 0; i--) {
                 switch (this._bin.getUint8(this._tmpPosition++)) {
                     case SpriterBin.ATTR_TIMELINE_ID:
@@ -842,7 +956,7 @@ var Spriter;
                         break;
                     case SpriterBin.ATTR_TIMELINE_OBJ_TYPE:
                         if (this.readUint8() === 1) {
-                            type = Spriter.eObjectType.BONE;
+                            type = 1 /* BONE */;
                         }
                         break;
                 }
@@ -880,7 +994,7 @@ var Spriter;
             var time = 0;
             var spin = 1;
             // curve and params
-            var curve = Spriter.eCurveType.LINEAR;
+            var curve = 0 /* LINEAR */;
             var c1 = 0;
             var c2 = 0;
             var c3 = 0;
@@ -923,7 +1037,7 @@ var Spriter;
                 sprite = true;
             }
             // other curve than linear?
-            if (curve !== Spriter.eCurveType.LINEAR) {
+            if (curve !== 0 /* LINEAR */) {
                 key.setCurve(curve, c1, c2, c3, c4);
             }
             this._tmpPosition = this.getAttribsPosition(offset);
@@ -1083,7 +1197,7 @@ var Spriter;
         SpriterBin.ATTR_OBJ_ANGLE = 13;
         SpriterBin.ATTR_OBJ_ALPHA = 14;
         return SpriterBin;
-    })(Spriter.SpriterFile);
+    }(Spriter.SpriterFile));
     Spriter.SpriterBin = SpriterBin;
 })(Spriter || (Spriter = {}));
 /// <reference path="SpriterFile.ts" />
@@ -1092,12 +1206,11 @@ var Spriter;
     var SpriterJSON = (function (_super) {
         __extends(SpriterJSON, _super);
         // -------------------------------------------------------------------------
-        function SpriterJSON(JSONData, minDefs) {
-            if (minDefs === void 0) { minDefs = null; }
-            _super.call(this);
+        function SpriterJSON(JSONData, options) {
+            _super.call(this, options);
             this._json = JSONData;
             var minimized = JSONData["min"] !== undefined;
-            this.setMinimized(minimized, minDefs);
+            this.setMinimized(minimized);
         }
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getType = function () {
@@ -1157,12 +1270,11 @@ var Spriter;
             if (element["type"] !== undefined && element["type"] === "sound") {
                 return null;
             }
-            return new Spriter.File(this.parseInt(element, "id"), this.getFileNameWithoutExtension(this.parseString(element, "name")), this.parseFloat(element, "pivot_x"), 1 - this.parseFloat(element, "pivot_y"));
+            return new Spriter.File(this.parseInt(element, "id"), this.getFileName(this.parseString(element, "name")), this.parseFloat(element, "pivot_x"), 1 - this.parseFloat(element, "pivot_y"));
         };
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getTag = function (element) {
-            console.error("implement loading Tag");
-            return null;
+            return new Spriter.Item(this.parseInt(element, "id"), this.parseString(element, "name"));
         };
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getEntity = function (element) {
@@ -1190,7 +1302,7 @@ var Spriter;
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getVariable = function (element) {
             var type = Spriter.Types.getVariableTypeForName(this.parseString(element, "type"));
-            return new Spriter.Variable(this.parseInt(element, "id"), this.parseString(element, "name"), type, (type === Spriter.eVariableType.STRING) ? this.parseString(element, "default") : this.parseFloat(element, "default", 0));
+            return new Spriter.Variable(this.parseInt(element, "id"), this.parseString(element, "name"), type, (type === 2 /* STRING */) ? this.parseString(element, "default") : this.parseFloat(element, "default", 0));
         };
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getAnimation = function (element) {
@@ -1226,7 +1338,7 @@ var Spriter;
         };
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getVariableKey = function (element, type) {
-            return new Spriter.KeyVariable(this.parseInt(element, "id"), this.parseInt(element, "time"), (type === Spriter.eVariableType.STRING) ? this.parseString(element, "val") : this.parseFloat(element, "val"));
+            return new Spriter.KeyVariable(this.parseInt(element, "id"), this.parseInt(element, "time"), (type === 2 /* STRING */) ? this.parseString(element, "val") : this.parseFloat(element, "val"));
         };
         // -------------------------------------------------------------------------
         SpriterJSON.prototype.getTimelineKey = function (element, index, spriter) {
@@ -1286,7 +1398,7 @@ var Spriter;
             return this.parseInt(element, "t");
         };
         return SpriterJSON;
-    })(Spriter.SpriterFile);
+    }(Spriter.SpriterFile));
     Spriter.SpriterJSON = SpriterJSON;
 })(Spriter || (Spriter = {}));
 /// <reference path="SpriterFile.ts" />
@@ -1295,12 +1407,11 @@ var Spriter;
     var SpriterXml = (function (_super) {
         __extends(SpriterXml, _super);
         // -------------------------------------------------------------------------
-        function SpriterXml(xmlData, minDefs) {
-            if (minDefs === void 0) { minDefs = null; }
-            _super.call(this);
+        function SpriterXml(xmlData, options) {
+            _super.call(this, options);
             this._xml = xmlData;
             var minimized = xmlData.documentElement.hasAttribute("min");
-            this.setMinimized(minimized, minDefs);
+            this.setMinimized(minimized);
         }
         // -------------------------------------------------------------------------
         SpriterXml.prototype.getType = function () {
@@ -1345,7 +1456,7 @@ var Spriter;
             if (element.hasAttribute("type") && element.getAttribute("type") === "sound") {
                 return null;
             }
-            return new Spriter.File(this.parseInt(element, "id"), this.getFileNameWithoutExtension(this.parseString(element, "name")), this.parseFloat(element, "pivot_x"), 1 - this.parseFloat(element, "pivot_y"));
+            return new Spriter.File(this.parseInt(element, "id"), this.getFileName(this.parseString(element, "name")), this.parseFloat(element, "pivot_x"), 1 - this.parseFloat(element, "pivot_y"));
         };
         // -------------------------------------------------------------------------
         SpriterXml.prototype.getTag = function (element) {
@@ -1377,7 +1488,7 @@ var Spriter;
         // -------------------------------------------------------------------------
         SpriterXml.prototype.getVariable = function (element) {
             var type = Spriter.Types.getVariableTypeForName(this.parseString(element, "type"));
-            return new Spriter.Variable(this.parseInt(element, "id"), this.parseString(element, "name"), type, (type === Spriter.eVariableType.STRING) ? this.parseString(element, "default") : this.parseFloat(element, "default", 0));
+            return new Spriter.Variable(this.parseInt(element, "id"), this.parseString(element, "name"), type, (type === 2 /* STRING */) ? this.parseString(element, "default") : this.parseFloat(element, "default", 0));
         };
         // -------------------------------------------------------------------------
         SpriterXml.prototype.getAnimation = function (element) {
@@ -1413,7 +1524,7 @@ var Spriter;
         };
         // -------------------------------------------------------------------------
         SpriterXml.prototype.getVariableKey = function (element, type) {
-            return new Spriter.KeyVariable(this.parseInt(element, "id"), this.parseInt(element, "time"), (type === Spriter.eVariableType.STRING) ? this.parseString(element, "val") : this.parseFloat(element, "val"));
+            return new Spriter.KeyVariable(this.parseInt(element, "id"), this.parseInt(element, "time"), (type === 2 /* STRING */) ? this.parseString(element, "val") : this.parseFloat(element, "val"));
         };
         // -------------------------------------------------------------------------
         SpriterXml.prototype.getTimelineKey = function (element, index, spriter) {
@@ -1471,7 +1582,7 @@ var Spriter;
             return this.parseInt(element, "t");
         };
         return SpriterXml;
-    })(Spriter.SpriterFile);
+    }(Spriter.SpriterFile));
     Spriter.SpriterXml = SpriterXml;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1499,7 +1610,7 @@ var Spriter;
             configurable: true
         });
         return Item;
-    })();
+    }());
     Spriter.Item = Item;
 })(Spriter || (Spriter = {}));
 /// <reference path="../IdNameMap.ts" />
@@ -1566,12 +1677,6 @@ var Spriter;
             enumerable: true,
             configurable: true
         });
-        // -------------------------------------------------------------------------
-        Animation.prototype.resetLines = function () {
-            for (var i = 0; i < this._lines.length; i++) {
-                this._lines.getById(i).reset();
-            }
-        };
         Object.defineProperty(Animation.prototype, "length", {
             // -------------------------------------------------------------------------
             get: function () {
@@ -1589,7 +1694,7 @@ var Spriter;
             configurable: true
         });
         return Animation;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.Animation = Animation;
 })(Spriter || (Spriter = {}));
 /// <reference path="../IdNameMap.ts" />
@@ -1679,7 +1784,7 @@ var Spriter;
             configurable: true
         });
         return Entity;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.Entity = Entity;
 })(Spriter || (Spriter = {}));
 /// <reference path="Item.ts" />
@@ -1710,7 +1815,7 @@ var Spriter;
             configurable: true
         });
         return File;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.File = File;
 })(Spriter || (Spriter = {}));
 /// <reference path="../IdNameMap.ts" />
@@ -1737,7 +1842,7 @@ var Spriter;
             return this._files.getByName(name);
         };
         return Folder;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.Folder = Folder;
 })(Spriter || (Spriter = {}));
 /// <reference path="Item.ts" />
@@ -1763,7 +1868,7 @@ var Spriter;
             return this._map[key];
         };
         return CharMap;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.CharMap = CharMap;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1824,7 +1929,7 @@ var Spriter;
             return -1;
         };
         return CharMapStack;
-    })();
+    }());
     Spriter.CharMapStack = CharMapStack;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1852,7 +1957,7 @@ var Spriter;
             configurable: true
         });
         return Key;
-    })();
+    }());
     Spriter.Key = Key;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1889,7 +1994,7 @@ var Spriter;
             this._objectRefs.push(objectRef);
         };
         return KeyMainline;
-    })(Spriter.Key);
+    }(Spriter.Key));
     Spriter.KeyMainline = KeyMainline;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1912,7 +2017,7 @@ var Spriter;
             configurable: true
         });
         return KeyTag;
-    })(Spriter.Key);
+    }(Spriter.Key));
     Spriter.KeyTag = KeyTag;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1933,7 +2038,7 @@ var Spriter;
             configurable: true
         });
         return KeyVariable;
-    })(Spriter.Key);
+    }(Spriter.Key));
     Spriter.KeyVariable = KeyVariable;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -1955,7 +2060,6 @@ var Spriter;
             if (name === void 0) { name = null; }
             _super.call(this, id, name);
             this._type = eTimelineType.UNKNOWN;
-            this.reset();
         }
         Object.defineProperty(Baseline.prototype, "type", {
             // -------------------------------------------------------------------------
@@ -1969,12 +2073,14 @@ var Spriter;
             enumerable: true,
             configurable: true
         });
-        // -------------------------------------------------------------------------
-        Baseline.prototype.reset = function () {
-            this._lastTime = -1;
-            this._currentIndex = -1;
-            this._nextIndex = 0;
-        };
+        Object.defineProperty(Baseline.prototype, "keys", {
+            // -------------------------------------------------------------------------
+            get: function () {
+                return this._keys;
+            },
+            enumerable: true,
+            configurable: true
+        });
         // -------------------------------------------------------------------------
         Baseline.prototype.add = function (key) {
             if (this._keys === null || this._keys === undefined) {
@@ -1999,68 +2105,8 @@ var Spriter;
             }
             return this._keys[index];
         };
-        Object.defineProperty(Baseline.prototype, "current", {
-            // -------------------------------------------------------------------------
-            get: function () {
-                return this.at(this._currentIndex);
-            },
-            enumerable: true,
-            configurable: true
-        });
-        Object.defineProperty(Baseline.prototype, "currentIndex", {
-            // -------------------------------------------------------------------------
-            get: function () {
-                return this._currentIndex;
-            },
-            enumerable: true,
-            configurable: true
-        });
-        Object.defineProperty(Baseline.prototype, "next", {
-            // -------------------------------------------------------------------------
-            get: function () {
-                return this.at(this._nextIndex);
-            },
-            enumerable: true,
-            configurable: true
-        });
-        Object.defineProperty(Baseline.prototype, "nextIndex", {
-            // -------------------------------------------------------------------------
-            get: function () {
-                return this._nextIndex;
-            },
-            enumerable: true,
-            configurable: true
-        });
-        // -------------------------------------------------------------------------
-        Baseline.prototype.step = function (time) {
-            var index = this._nextIndex;
-            // get key at current position
-            var key = this._keys[index];
-            var keyTime = key.time;
-            // if current key time is bigger than time for stepTo, then we must first go till end of timeline and then continue from beginning
-            var loop = time < this._lastTime;
-            if ((!loop && (keyTime > this._lastTime && keyTime <= time)) ||
-                (loop && (keyTime > this._lastTime || keyTime <= time))) {
-                this._lastTime = keyTime;
-                this._currentIndex = index;
-                if ((++index) >= this._keys.length) {
-                    index = 0;
-                }
-                this._nextIndex = index;
-                return key;
-            }
-            return null;
-        };
-        Object.defineProperty(Baseline.prototype, "lastTime", {
-            // -------------------------------------------------------------------------
-            set: function (time) {
-                this._lastTime = time;
-            },
-            enumerable: true,
-            configurable: true
-        });
         return Baseline;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.Baseline = Baseline;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2072,14 +2118,65 @@ var Spriter;
     Spriter.linear = linear;
     // -------------------------------------------------------------------------
     function quadratic(a, b, c, t) {
-        return this.linear(this.linear(a, b, t), this.linear(b, c, t), t);
+        return linear(linear(a, b, t), linear(b, c, t), t);
     }
     Spriter.quadratic = quadratic;
     // -------------------------------------------------------------------------
     function cubic(a, b, c, d, t) {
-        return this.linear(this.quadratic(a, b, c, t), this.quadratic(b, c, d, t), t);
+        return linear(quadratic(a, b, c, t), quadratic(b, c, d, t), t);
     }
     Spriter.cubic = cubic;
+    // -------------------------------------------------------------------------
+    function quartic(a, b, c, d, e, t) {
+        return linear(cubic(a, b, c, d, t), cubic(b, c, d, e, t), t);
+    }
+    Spriter.quartic = quartic;
+    // -------------------------------------------------------------------------
+    function quintic(a, b, c, d, e, f, t) {
+        return linear(quartic(a, b, c, d, e, t), quartic(b, c, d, e, f, t), t);
+    }
+    Spriter.quintic = quintic;
+    // -------------------------------------------------------------------------
+    // B(t) = (1 − t)^3 * P0 + 3(1 − t)^2 * t * P1 + 3(1 − t) *  t^2 * P2 + t^3 * P3  , 0 ≤ t ≤ 1.
+    function bezierCoord(p1, p2, t) {
+        // p0 = 0, p3 = 1
+        var p0 = 0;
+        var p3 = 1;
+        var u = 1 - t;
+        var t2 = t * t;
+        var u2 = u * u;
+        var u3 = u2 * u;
+        var t3 = t2 * t;
+        return 0 + 3 * u2 * t * p1 + 3 * u * t2 * p2 + t3 * p3;
+    }
+    // -------------------------------------------------------------------------
+    function bezier(p1x, p1y, p2x, p2y, t) {
+        var epsilon = 0.001;
+        var maxIterations = 10;
+        // binary search
+        //establish bounds
+        var lower = 0;
+        var upper = 1;
+        var percent = (upper + lower) / 2;
+        //initial x
+        var x = bezierCoord(p1x, p2x, percent);
+        //loop until returned x - t is less than epsilon
+        var iterations = 0;
+        while (Math.abs(t - x) > epsilon && iterations < maxIterations) {
+            if (t > x) {
+                lower = percent;
+            }
+            else {
+                upper = percent;
+            }
+            percent = (upper + lower) / 2;
+            x = bezierCoord(p1x, p2x, percent);
+            ++iterations;
+        }
+        //we're within tolerance of the desired x value. Return the y value.
+        return bezierCoord(p1y, p2y, percent);
+    }
+    Spriter.bezier = bezier;
     // -------------------------------------------------------------------------
     function angleLinear(angleA, angleB, spin, t) {
         // no spin
@@ -2136,7 +2233,7 @@ var Spriter;
             },
             // -------------------------------------------------------------------------
             set: function (value) {
-                if (this._type === Spriter.eVariableType.INT) {
+                if (this._type === 0 /* INT */) {
                     this._value = Math.floor(value);
                 }
                 else {
@@ -2171,7 +2268,7 @@ var Spriter;
             configurable: true
         });
         return Variable;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.Variable = Variable;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2193,7 +2290,7 @@ var Spriter;
             configurable: true
         });
         return Varline;
-    })(Spriter.Baseline);
+    }(Spriter.Baseline));
     Spriter.Varline = Varline;
 })(Spriter || (Spriter = {}));
 /// <reference path="Item.ts" />
@@ -2251,32 +2348,11 @@ var Spriter;
             configurable: true
         });
         return ObjectInfo;
-    })(Spriter.Item);
+    }(Spriter.Item));
     Spriter.ObjectInfo = ObjectInfo;
 })(Spriter || (Spriter = {}));
 var Spriter;
 (function (Spriter) {
-    (function (eObjectType) {
-        eObjectType[eObjectType["SPRITE"] = 0] = "SPRITE";
-        eObjectType[eObjectType["BONE"] = 1] = "BONE";
-        eObjectType[eObjectType["BOX"] = 2] = "BOX";
-        eObjectType[eObjectType["POINT"] = 3] = "POINT";
-        eObjectType[eObjectType["SOUND"] = 4] = "SOUND";
-    })(Spriter.eObjectType || (Spriter.eObjectType = {}));
-    var eObjectType = Spriter.eObjectType;
-    (function (eCurveType) {
-        eCurveType[eCurveType["LINEAR"] = 0] = "LINEAR";
-        eCurveType[eCurveType["INSTANT"] = 1] = "INSTANT";
-        eCurveType[eCurveType["QUADRATIC"] = 2] = "QUADRATIC";
-        eCurveType[eCurveType["CUBIC"] = 3] = "CUBIC";
-    })(Spriter.eCurveType || (Spriter.eCurveType = {}));
-    var eCurveType = Spriter.eCurveType;
-    (function (eVariableType) {
-        eVariableType[eVariableType["INT"] = 0] = "INT";
-        eVariableType[eVariableType["FLOAT"] = 1] = "FLOAT";
-        eVariableType[eVariableType["STRING"] = 2] = "STRING";
-    })(Spriter.eVariableType || (Spriter.eVariableType = {}));
-    var eVariableType = Spriter.eVariableType;
     var Types = (function () {
         function Types() {
         }
@@ -2305,25 +2381,28 @@ var Spriter;
             return type;
         };
         Types.nameToObjectType = {
-            "sprite": eObjectType.SPRITE,
-            "bone": eObjectType.BONE,
-            "box": eObjectType.BOX,
-            "point": eObjectType.POINT,
-            "sound": eObjectType.SOUND
+            "sprite": 0 /* SPRITE */,
+            "bone": 1 /* BONE */,
+            "box": 2 /* BOX */,
+            "point": 3 /* POINT */,
+            "sound": 4 /* SOUND */
         };
         Types.nameToCurveType = {
-            "instatnt": eCurveType.INSTANT,
-            "linear": eCurveType.LINEAR,
-            "quadratic": eCurveType.QUADRATIC,
-            "cubic": eCurveType.CUBIC
+            "instant": 1 /* INSTANT */,
+            "linear": 0 /* LINEAR */,
+            "quadratic": 2 /* QUADRATIC */,
+            "cubic": 3 /* CUBIC */,
+            "quartic": 4 /* QUARTIC */,
+            "quintic": 5 /* QUINTIC */,
+            "bezier": 6 /* BEZIER */
         };
         Types.nameToVariableType = {
-            "int": eVariableType.INT,
-            "float": eVariableType.FLOAT,
-            "string": eVariableType.STRING
+            "int": 0 /* INT */,
+            "float": 1 /* FLOAT */,
+            "string": 2 /* STRING */
         };
         return Types;
-    })();
+    }());
     Spriter.Types = Types;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2339,7 +2418,7 @@ var Spriter;
             this.z = z;
         }
         return Ref;
-    })();
+    }());
     Spriter.Ref = Ref;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2348,7 +2427,7 @@ var Spriter;
         __extends(Timeline, _super);
         // -------------------------------------------------------------------------
         function Timeline(id, name, type, objectRef) {
-            if (type === void 0) { type = Spriter.eObjectType.SPRITE; }
+            if (type === void 0) { type = 0 /* SPRITE */; }
             if (objectRef === void 0) { objectRef = -1; }
             _super.call(this, id, name);
             this.type = Spriter.eTimelineType.TIME_LINE;
@@ -2372,7 +2451,7 @@ var Spriter;
             configurable: true
         });
         return Timeline;
-    })(Spriter.Baseline);
+    }(Spriter.Baseline));
     Spriter.Timeline = Timeline;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2384,7 +2463,7 @@ var Spriter;
             _super.call(this, id, time);
             this._info = new Spriter.SpatialInfo();
             this._spin = spin;
-            this.setCurve(Spriter.eCurveType.LINEAR);
+            this.setCurve(0 /* LINEAR */);
         }
         // -------------------------------------------------------------------------
         KeyTimeline.prototype.setCurve = function (curveType, c1, c2, c3, c4) {
@@ -2455,7 +2534,7 @@ var Spriter;
             configurable: true
         });
         return KeyTimeline;
-    })(Spriter.Key);
+    }(Spriter.Key));
     Spriter.KeyTimeline = KeyTimeline;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2472,7 +2551,7 @@ var Spriter;
             this.angle = 0;
         }
         return SpatialInfo;
-    })();
+    }());
     Spriter.SpatialInfo = SpatialInfo;
 })(Spriter || (Spriter = {}));
 /// <reference path="KeyTimeline.ts" />
@@ -2505,7 +2584,7 @@ var Spriter;
             configurable: true
         });
         return KeyObject;
-    })(Spriter.KeyTimeline);
+    }(Spriter.KeyTimeline));
     Spriter.KeyObject = KeyObject;
 })(Spriter || (Spriter = {}));
 /// <reference path="KeyTimeline.ts" />
@@ -2517,7 +2596,7 @@ var Spriter;
             _super.apply(this, arguments);
         }
         return KeyBone;
-    })(Spriter.KeyTimeline);
+    }(Spriter.KeyTimeline));
     Spriter.KeyBone = KeyBone;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2572,12 +2651,22 @@ var Spriter;
             if (tags.length() === 0) {
                 return;
             }
-            var tagDefs = tags.getChildNodes(0, "i");
+            // different structure for json than for xml
+            var tagDefs;
+            if (this._fileType !== Spriter.eFileType.JSON) {
+                tagDefs = tags.getChildNodes(0, "i");
+            }
+            else {
+                tagDefs = tags;
+            }
             for (var i = 0; i < tagDefs.length(); i++) {
                 var tag = tagDefs.getTag(i);
                 spriter.addTag(tag);
             }
-            tagDefs.processed();
+            // different structure for json than for xml
+            if (this._fileType !== Spriter.eFileType.JSON) {
+                tagDefs.processed();
+            }
         };
         // -------------------------------------------------------------------------
         Loader.prototype.loadEntities = function (spriter, entities) {
@@ -2801,7 +2890,7 @@ var Spriter;
             }
         };
         return Loader;
-    })();
+    }());
     Spriter.Loader = Loader;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2858,7 +2947,7 @@ var Spriter;
             configurable: true
         });
         return Spriter;
-    })();
+    }());
     Spriter_1.Spriter = Spriter;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -2994,17 +3083,23 @@ var Spriter;
         };
         // -------------------------------------------------------------------------
         SpriterBone.prototype.getTweenTime = function (time) {
-            if (this.key.curveType === Spriter.eCurveType.INSTANT) {
+            if (this.key.curveType === 1 /* INSTANT */) {
                 return 0;
             }
             var t = Phaser.Math.clamp((time - this.timeFrom) / (this.timeTo - this.timeFrom), 0, 1);
             switch (this.key.curveType) {
-                case Spriter.eCurveType.LINEAR:
+                case 0 /* LINEAR */:
                     return t;
-                case Spriter.eCurveType.QUADRATIC:
+                case 2 /* QUADRATIC */:
                     return Spriter.quadratic(0, this.key.c1, 1, t);
-                case Spriter.eCurveType.CUBIC:
+                case 3 /* CUBIC */:
                     return Spriter.cubic(0, this.key.c1, this.key.c2, 1, t);
+                case 4 /* QUARTIC */:
+                    return Spriter.quartic(0, this.key.c1, this.key.c2, this.key.c3, 1, t);
+                case 5 /* QUINTIC */:
+                    return Spriter.quintic(0, this.key.c1, this.key.c2, this.key.c3, this.key.c4, 1, t);
+                case 6 /* BEZIER */:
+                    return Spriter.bezier(this.key.c1, this.key.c2, this.key.c3, this.key.c4, t);
             }
             return 0;
         };
@@ -3017,7 +3112,7 @@ var Spriter;
         SpriterBone.UPDATE_ANGLE = 64;
         SpriterBone.UPDATE_ALPHA = 128;
         return SpriterBone;
-    })();
+    }());
     Spriter.SpriterBone = SpriterBone;
 })(Spriter || (Spriter = {}));
 var Spriter;
@@ -3039,6 +3134,13 @@ var Spriter;
             this.onTagChange = new Phaser.Signal();
             // onVariableSet(SpriterGroup, Variable); // Variable is Spriter variable def with access to value
             this.onVariableSet = new Phaser.Signal();
+            // onBoxUpdated(SpriterGroup, SpriterObject);
+            this.onBoxUpdated = new Phaser.Signal();
+            // onPointUpdated(SpriterGroup, SpriterObject);
+            this.onPointUpdated = new Phaser.Signal();
+            this._mainlineStepper = new Spriter.LineStepper();
+            this._lineSteppers = [];
+            this._lineSteppersCount = 0;
             this._bones = [];
             this._objects = [];
             this._tags = 0; // up to 32 tags - 1 per bit
@@ -3096,15 +3198,11 @@ var Spriter;
             enumerable: true,
             configurable: true
         });
-        Object.defineProperty(SpriterGroup.prototype, "puased", {
+        Object.defineProperty(SpriterGroup.prototype, "paused", {
             // -------------------------------------------------------------------------
             get: function () {
                 return this._paused;
             },
-            enumerable: true,
-            configurable: true
-        });
-        Object.defineProperty(SpriterGroup.prototype, "paused", {
             // -------------------------------------------------------------------------
             set: function (paused) {
                 this.paused = paused;
@@ -3176,38 +3274,39 @@ var Spriter;
             return null;
         };
         // -------------------------------------------------------------------------
-        SpriterGroup.prototype.setAnimationSpeedPercent = function (aAnimationSpeedPercent) {
-            if (aAnimationSpeedPercent === void 0) { aAnimationSpeedPercent = 100; }
-            this._animationSpeed = aAnimationSpeedPercent / 100;
+        SpriterGroup.prototype.setAnimationSpeedPercent = function (animationSpeedPercent) {
+            if (animationSpeedPercent === void 0) { animationSpeedPercent = 100; }
+            this._animationSpeed = animationSpeedPercent / 100;
         };
         // -------------------------------------------------------------------------
-        SpriterGroup.prototype.playAnimationById = function (aAnimationId) {
-            var animation = this._entity.getAnimationById(aAnimationId);
+        SpriterGroup.prototype.playAnimationById = function (animationId) {
+            var animation = this._entity.getAnimationById(animationId);
             if (animation === undefined || animation === null) {
-                console.warn("Animation " + aAnimationId + " for entity " + this._entityName + " does not exist!");
+                console.warn("Animation " + animationId + " for entity " + this._entityName + " does not exist!");
                 return;
             }
             this.playAnimation(animation);
         };
         // -------------------------------------------------------------------------
-        SpriterGroup.prototype.playAnimationByName = function (aAnimationName) {
-            var animation = this._entity.getAnimationByName(aAnimationName);
+        SpriterGroup.prototype.playAnimationByName = function (animationName) {
+            var animation = this._entity.getAnimationByName(animationName);
             if (animation === undefined || animation === null) {
-                console.warn("Animation " + aAnimationName + " for entity " + this._entityName + " does not exist!");
+                console.warn("Animation " + animationName + " for entity " + this._entityName + " does not exist!");
                 return;
             }
             this.playAnimation(animation);
         };
         // -------------------------------------------------------------------------
-        SpriterGroup.prototype.playAnimation = function (aAnimation) {
-            this._animationName = aAnimation.name;
-            this._animation = aAnimation;
+        SpriterGroup.prototype.playAnimation = function (animation) {
+            this._animationName = animation.name;
+            this._animation = animation;
             this._finished = false;
             // reset time to beginning of animation and find first from and to keys
-            this._animation.mainline.reset();
+            this._mainlineStepper.reset();
+            this._mainlineStepper.line = this._animation.mainline;
             this._time = 0;
             // reset all additional time lines (soundline, varline, tagline, eventline)
-            aAnimation.resetLines();
+            this.resetLines();
             // reset tags
             this._tags = 0;
             // reset variables to defaults
@@ -3220,8 +3319,25 @@ var Spriter;
             this.updateCharacter();
         };
         // -------------------------------------------------------------------------
-        SpriterGroup.prototype.setBones = function (aBones, aForce) {
-            if (aForce === void 0) { aForce = false; }
+        SpriterGroup.prototype.resetLines = function () {
+            // reset steppers
+            this._lineSteppersCount = 0;
+            // go through all lines (sounds, events, tags, vars)
+            for (var i = 0; i < this._animation.linesLength; i++) {
+                var line = this._animation.getLineById(i);
+                // if not enough line steppers in array, add new one
+                if (this._lineSteppersCount >= this._lineSteppers.length) {
+                    this._lineSteppers[this._lineSteppersCount] = new Spriter.LineStepper();
+                }
+                // get free stepper
+                var stepper = this._lineSteppers[this._lineSteppersCount++];
+                stepper.reset();
+                stepper.line = line;
+            }
+        };
+        // -------------------------------------------------------------------------
+        SpriterGroup.prototype.setBones = function (bones, force) {
+            if (force === void 0) { force = false; }
             // switch off all existing bones
             for (var i = 0; i < this._bones.length; i++) {
                 if (this._bones[i] !== undefined) {
@@ -3229,25 +3345,25 @@ var Spriter;
                 }
             }
             // go through all bones and add new ones if necessary and activate used ones
-            for (var i = 0; i < aBones.length; i++) {
-                var ref = aBones[i];
+            for (var i = 0; i < bones.length; i++) {
+                var ref = bones[i];
                 // if bone does not exist add it and make active, else make it active only
                 if (this._bones[ref.id] === undefined) {
                     var newBone = new Spriter.SpriterBone();
-                    newBone.type = Spriter.eObjectType.BONE;
+                    newBone.type = 1 /* BONE */;
                     this._bones[ref.id] = newBone;
                 }
                 var bone = this._bones[ref.id];
                 bone.setOn(true);
                 bone.parent = ref.parent;
-                if (bone.timelineKey !== ref.key || bone.timeline !== ref.timeline || aForce) {
+                if (bone.timelineKey !== ref.key || bone.timeline !== ref.timeline || force) {
                     bone.setKey(this._entity, this._animation, ref.timeline, ref.key);
                 }
             }
         };
         // -------------------------------------------------------------------------
-        SpriterGroup.prototype.setObjects = function (aObjects, aForce) {
-            if (aForce === void 0) { aForce = false; }
+        SpriterGroup.prototype.setObjects = function (objects, force) {
+            if (force === void 0) { force = false; }
             // switch off (kill) all existing sprites
             for (var i = 0; i < this._objects.length; i++) {
                 if (this._objects[i] !== undefined) {
@@ -3256,8 +3372,8 @@ var Spriter;
             }
             // go through all objects/sprites and add new ones if necessary and activate used ones
             var zChange = false;
-            for (var i = 0; i < aObjects.length; i++) {
-                var ref = aObjects[i];
+            for (var i = 0; i < objects.length; i++) {
+                var ref = objects[i];
                 var object = null;
                 var sprite = null;
                 // if sprite does not exist add it and make active, else make it active only
@@ -3274,26 +3390,17 @@ var Spriter;
                 object.parent = ref.parent;
                 object.type = this._animation.getTimelineById(ref.timeline).objectType;
                 // is it sprite or any other type of object? (box / point)
-                if (object.type === Spriter.eObjectType.SPRITE) {
+                if (object.type === 0 /* SPRITE */) {
                     object.setOn(true);
                     if (object.sprite.z !== ref.z) {
                         object.sprite.z = ref.z;
                         zChange = true;
                     }
                 }
-                //// TODO remove - debug
-                //else {
-                //    object.setOn(true);
-                //    if (object.type === eObjectType.POINT) {
-                //        object.setOn(true);
-                //        object.sprite.frameName = "DebugPoint";
-                //        object.sprite.anchor.set(0.5, 0.5);
-                //    } else if (object.type === eObjectType.BOX) {
-                //        object.setOn(true);
-                //        object.sprite.frameName = "DebugBox";
-                //    }
-                //}
-                if (object.timelineKey !== ref.key || object.timeline !== ref.timeline || aForce) {
+                else {
+                    object.setOn(true, true);
+                }
+                if (object.timelineKey !== ref.key || object.timeline !== ref.timeline || force) {
                     object.setKey(this._entity, this._animation, ref.timeline, ref.key);
                 }
             }
@@ -3313,7 +3420,7 @@ var Spriter;
             if (this._paused || this._finished) {
                 return;
             }
-            var mainline = this._animation.mainline;
+            var mainlineStepper = this._mainlineStepper;
             // check if in the end of animation and whether to loop or not
             if (this._time > this._animation.length) {
                 if (this._animation.loopType === Spriter.eAnimationLooping.NO_LOOPING) {
@@ -3327,10 +3434,10 @@ var Spriter;
             }
             // consume all new keys
             var key;
-            while ((key = mainline.step(this._time)) !== null) {
+            while ((key = mainlineStepper.step(this._time)) !== null) {
                 //console.log("got key at: " + key.time + " time: " + this._time);
                 this.loadKeys(key);
-                mainline.lastTime = key.time;
+                mainlineStepper.lastTime = key.time;
             }
             this.updateCharacter();
             this.updateLines();
@@ -3355,15 +3462,25 @@ var Spriter;
                     var parentSpatial = (object.parent === -1) ? this._root : this._bones[object.parent].transformed;
                     object.tween(this._time);
                     object.update(parentSpatial);
+                    if (object.type === 0 /* SPRITE */) {
+                        object.updateSprite();
+                    }
+                    else if (object.type === 2 /* BOX */) {
+                        this.onBoxUpdated.dispatch(this, object);
+                    }
+                    else if (object.type === 3 /* POINT */) {
+                        this.onPointUpdated.dispatch(this, object);
+                    }
                 }
             }
         };
         // -------------------------------------------------------------------------
         SpriterGroup.prototype.updateLines = function () {
-            for (var i = this._animation.linesLength - 1; i >= 0; i--) {
-                var line = this._animation.getLineById(i);
+            for (var i = this._lineSteppersCount - 1; i >= 0; i--) {
+                var lineStepper = this._lineSteppers[i];
+                var line = lineStepper.line;
                 var key;
-                while ((key = line.step(this._time)) !== null) {
+                while ((key = lineStepper.step(this._time)) !== null) {
                     switch (line.type) {
                         case Spriter.eTimelineType.SOUND_LINE:
                             //console.log("sound: " + line.name + " - key: " + key.id + ", time: " + key.time);
@@ -3394,12 +3511,12 @@ var Spriter;
                             this.onVariableSet.dispatch(this, variable);
                             break;
                     }
-                    line.lastTime = key.time;
+                    lineStepper.lastTime = key.time;
                 }
             }
         };
         return SpriterGroup;
-    })(Phaser.Group);
+    }(Phaser.Group));
     Spriter.SpriterGroup = SpriterGroup;
 })(Spriter || (Spriter = {}));
 /// <reference path="SpriterBone.ts" />
@@ -3423,16 +3540,18 @@ var Spriter;
             configurable: true
         });
         // -------------------------------------------------------------------------
-        SpriterObject.prototype.setOn = function (on) {
+        SpriterObject.prototype.setOn = function (on, hideSprite) {
+            if (hideSprite === void 0) { hideSprite = false; }
             _super.prototype.setOn.call(this, on);
-            this._sprite.exists = on;
-            this._sprite.visible = (on && !this._hide);
+            // hide sprite for non-sprite objects
+            this._sprite.exists = on && !hideSprite;
+            this._sprite.visible = (on && !this._hide && !hideSprite);
         };
         // -------------------------------------------------------------------------
         SpriterObject.prototype.setKey = function (entity, animation, timelineId, keyId) {
             _super.prototype.setKey.call(this, entity, animation, timelineId, keyId);
             // set sprite - skip invisible objects - boxes, points
-            if (this.type === Spriter.eObjectType.SPRITE) {
+            if (this.type === 0 /* SPRITE */) {
                 var spriteKey = this.key;
                 var file = this._spriter.getFolderById(spriteKey.folder).getFileById(spriteKey.file);
                 this._file = file;
@@ -3444,7 +3563,7 @@ var Spriter;
         };
         // -------------------------------------------------------------------------
         SpriterObject.prototype.resetFile = function () {
-            if (this.type === Spriter.eObjectType.SPRITE) {
+            if (this.type === 0 /* SPRITE */) {
                 this.setFile(this._file);
             }
         };
@@ -3461,11 +3580,6 @@ var Spriter;
             }
         };
         // -------------------------------------------------------------------------
-        SpriterObject.prototype.update = function (parent) {
-            _super.prototype.update.call(this, parent);
-            this.updateSprite();
-        };
-        // -------------------------------------------------------------------------
         SpriterObject.prototype.updateSprite = function () {
             var t = this.transformed;
             var s = this.sprite;
@@ -3476,9 +3590,54 @@ var Spriter;
             s.angle = t.angle;
         };
         return SpriterObject;
-    })(Spriter.SpriterBone);
+    }(Spriter.SpriterBone));
     Spriter.SpriterObject = SpriterObject;
 })(Spriter || (Spriter = {}));
+
+var SpriterExample;
+(function (SpriterExample) {
+    var Global = (function () {
+        function Global() {
+        }
+        // game derived from Phaser.Game
+        Global.game = null;
+        // game size
+        Global.GAME_WIDTH = 640;
+        Global.GAME_HEIGHT = 640;
+        // assets path
+        Global.assetsPath = "assets/";
+        return Global;
+    }());
+    SpriterExample.Global = Global;
+})(SpriterExample || (SpriterExample = {}));
+var PhaserGlobal = {
+    stopFocus: true
+};
+// -------------------------------------------------------------------------
+window.onload = function () {
+    SpriterExample.Global.game = new SpriterExample.Game();
+};
+/// <reference path="../lib/phaser.d.ts" />
+var SpriterExample;
+(function (SpriterExample) {
+    var Game = (function (_super) {
+        __extends(Game, _super);
+        // -------------------------------------------------------------------------
+        function Game() {
+            // init game
+            _super.call(this, SpriterExample.Global.GAME_WIDTH, SpriterExample.Global.GAME_HEIGHT, Phaser.AUTO, "content", null /* , transparent, antialias, physicsConfig */);
+            Game.game = this;
+            // states
+            this.state.add("Boot", SpriterExample.Boot);
+            this.state.add("Preloader", SpriterExample.Preloader);
+            this.state.add("Test", SpriterExample.Test);
+            // start
+            this.state.start("Boot");
+        }
+        return Game;
+    }(Phaser.Game));
+    SpriterExample.Game = Game;
+})(SpriterExample || (SpriterExample = {}));
 /// <reference path="../../lib/phaser.d.ts" />
 var SpriterExample;
 (function (SpriterExample) {
@@ -3499,7 +3658,7 @@ var SpriterExample;
             this.game.state.start("Preloader", true, false);
         };
         return Boot;
-    })(Phaser.State);
+    }(Phaser.State));
     SpriterExample.Boot = Boot;
 })(SpriterExample || (SpriterExample = {}));
 var SpriterExample;
@@ -3522,6 +3681,8 @@ var SpriterExample;
             this.load.atlas("TEST", path + "Atlas.png", path + "Atlas.json");
             this.load.xml("TESTXml", path + "TEST.xml");
             this.load.json("TESTJson", path + "TEST.json");
+            // item (book) image
+            this.load.image("Item", path + "Item.png");
         };
         // -------------------------------------------------------------------------
         Preloader.prototype.onBinaryLoaded = function (key, data) {
@@ -3532,7 +3693,7 @@ var SpriterExample;
             this.game.state.start("Test");
         };
         return Preloader;
-    })(Phaser.State);
+    }(Phaser.State));
     SpriterExample.Preloader = Preloader;
 })(SpriterExample || (SpriterExample = {}));
 var SpriterExample;
@@ -3543,212 +3704,53 @@ var SpriterExample;
         function Test() {
             _super.call(this);
             this._text = "";
-            // -------------------------------------------------------------------------
-            // definitions if using minimized Spriter files
-            this.minimizedDefinitions = {
-                "name": "spriter_data",
-                "minName": "s",
-                "attributes": {
-                    "scml_version": "v",
-                    "generator": "g",
-                    "generator_version": "gv"
-                },
-                "childElements": {
-                    "folder": {
-                        "name": "folder",
-                        "minName": "d",
-                        "attributes": {
-                            "id": "i",
-                            "name": "n"
-                        },
-                        "childElements": {
-                            "file": {
-                                "name": "file",
-                                "minName": "f",
-                                "attributes": {
-                                    "id": "i",
-                                    "name": "n",
-                                    "width": "w",
-                                    "height": "h",
-                                    "pivot_x": "px",
-                                    "pivot_y": "py"
-                                }
-                            }
-                        }
-                    },
-                    "entity": {
-                        "name": "entity",
-                        "minName": "e",
-                        "attributes": {
-                            "id": "i",
-                            "name": "n"
-                        },
-                        "childElements": {
-                            "obj_info": {
-                                "name": "obj_info",
-                                "minName": "o",
-                                "attributes": {
-                                    "name": "n",
-                                    "type": "t",
-                                    "w": "w",
-                                    "h": "h"
-                                },
-                                "childElements": {
-                                    "frames": {
-                                        "name": "frames",
-                                        "minName": "f",
-                                        "childElements": {
-                                            "i": {
-                                                "name": "i",
-                                                "minName": "i",
-                                                "attributes": {
-                                                    "folder": "d",
-                                                    "file": "f"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            "animation": {
-                                "name": "animation",
-                                "minName": "a",
-                                "attributes": {
-                                    "id": "i",
-                                    "name": "n",
-                                    "length": "l",
-                                    "interval": "t",
-                                    "looping": "c"
-                                },
-                                "childElements": {
-                                    "mainline": {
-                                        "name": "mainline",
-                                        "minName": "m",
-                                        "childElements": {
-                                            "key": {
-                                                "name": "key",
-                                                "minName": "k",
-                                                "attributes": {
-                                                    "id": "i",
-                                                    "time": "t"
-                                                },
-                                                "childElements": {
-                                                    "bone_ref": {
-                                                        "name": "bone_ref",
-                                                        "minName": "b",
-                                                        "attributes": {
-                                                            "id": "i",
-                                                            "parent": "p",
-                                                            "timeline": "t",
-                                                            "key": "k"
-                                                        }
-                                                    },
-                                                    "object_ref": {
-                                                        "name": "object_ref",
-                                                        "minName": "o",
-                                                        "attributes": {
-                                                            "id": "i",
-                                                            "name": "n",
-                                                            "timeline": "t",
-                                                            "parent": "p",
-                                                            "key": "k",
-                                                            "z_index": "z",
-                                                            "folder": "d",
-                                                            "file": "f",
-                                                            "abs_x": "ax",
-                                                            "abs_y": "ay",
-                                                            "abs_pivot_x": "apx",
-                                                            "abs_pivot_y": "apy",
-                                                            "abs_scale_x": "asx",
-                                                            "abs_scale_y": "asy",
-                                                            "abs_angle": "r",
-                                                            "abs_a": "a"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    },
-                                    "timeline": {
-                                        "name": "timeline",
-                                        "minName": "t",
-                                        "attributes": {
-                                            "id": "i",
-                                            "name": "n",
-                                            "obj": "o",
-                                            "object_type": "t"
-                                        },
-                                        "childElements": {
-                                            "key": {
-                                                "name": "key",
-                                                "minName": "k",
-                                                "attributes": {
-                                                    "id": "i",
-                                                    "time": "t",
-                                                    "spin": "s",
-                                                    "curve_type": "ct",
-                                                    "c1": "c1",
-                                                    "c2": "c2"
-                                                },
-                                                "childElements": {
-                                                    "bone": {
-                                                        "name": "bone",
-                                                        "minName": "b",
-                                                        "attributes": {
-                                                            "x": "x",
-                                                            "y": "y",
-                                                            "angle": "r",
-                                                            "scale_x": "sx",
-                                                            "scale_y": "sy"
-                                                        }
-                                                    },
-                                                    "object": {
-                                                        "name": "object",
-                                                        "minName": "o",
-                                                        "attributes": {
-                                                            "folder": "d",
-                                                            "file": "f",
-                                                            "x": "x",
-                                                            "y": "y",
-                                                            "scale_x": "sx",
-                                                            "scale_y": "sy",
-                                                            "pivot_x": "px",
-                                                            "pivot_y": "py",
-                                                            "angle": "r",
-                                                            "a": "a"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            };
         }
         // -------------------------------------------------------------------------
         Test.prototype.create = function () {
             this.stage.backgroundColor = 0x527F68;
-            //var spriterLoader = new Spriter.Loader();
-            //var spriterFile = new Spriter.SpriterXml(this.cache.getXML("HeroDataXml") /*, this.minimizedDefinitions*/);
-            ////var spriterFile = new Spriter.SpriterJSON(this.cache.getJSON("HeroDataJSON"), this.minimizedDefinitions);
-            ////var spriterFile = new Spriter.SpriterBin(this.cache.getBinary("HeroDataBin"));
-            //var spriterData = spriterLoader.load(spriterFile);
-            //this.spriterGroup = new Spriter.SpriterGroup(this.game, spriterData, "Hero", "Player", 0, 100);
-            //this.spriterGroup.position.setTo(320, 350);
+            // ===============================================================
+            // HELP ITEM (book image)
+            // ===============================================================
+            this._item = new Phaser.Sprite(this.game, 0, 0, "Item");
+            this._item.anchor.set(0.5, 0.95);
+            this._item.exists = false;
+            this.world.add(this._item);
+            // ===============================================================
+            // BASIC SETUP
+            // ===============================================================
+            // create Spriter loader - class that can change Spriter file into internal structure
             var spriterLoader = new Spriter.Loader();
+            // create Spriter file object - it wraps XML/JSON loaded with Phaser Loader
             //var spriterFile = new Spriter.SpriterXml(this.cache.getXML("TESTXml"));
-            var spriterFile = new Spriter.SpriterJSON(this.cache.getJSON("TESTJson"));
+            var spriterFile = new Spriter.SpriterJSON(this.cache.getJSON("TESTJson"), /* optional parameters */ { imageNameType: Spriter.eImageNameType.NAME_ONLY });
+            // proces Spriter file (XML/JSON) with Spriter loader - outputs Spriter animation which you can instantiate multiple times with SpriterGroup
             var spriterData = spriterLoader.load(spriterFile);
+            // create actual renderable object - it is extension of Phaser.Group
             this._spriterGroup = new Spriter.SpriterGroup(this.game, spriterData, "TEST", "Hero", 0, 100);
             this._spriterGroup.position.setTo(420, 400);
+            // adds SpriterGroup to Phaser.World to appear on screen
+            this.world.add(this._spriterGroup);
+            // ===============================================================
+            // LISTENING TO SIGNALS
+            // ===============================================================
+            // Spriter animation can send info on when sounds, events, tags, variable - here we are listening to Phaser.Signals when animation variable is set
             this._spriterGroup.onVariableSet.add(function (spriter, variable) {
                 this._text = variable.string;
             }, this);
-            this.world.add(this._spriterGroup);
+            // add point update callback
+            this._spriterGroup.onPointUpdated.add(function (spriter, pointObj) {
+                if (this._item.exists) {
+                    var transformed = pointObj.transformed;
+                    // add SpriterGroups position and angle, bacause _item is in world space, but transformed values are in SpriterGroup local space
+                    this._item.position.set(spriter.x + transformed.x, spriter.y + transformed.y);
+                    // magic number 62.477 is initial angle of hand image in spriter animation. Compensate here to keep _item (book) more or less vertical
+                    // if _item was something like gun or sword, it would look good without this compensation
+                    this._item.angle = spriter.angle - 62.447 + transformed.angle;
+                }
+            }, this);
+            // ===============================================================
+            // REST OF THE EXAMPLE - change animations, change charmaps
+            // ===============================================================
             // cycle animations
             var animation = 0;
             var key = this.game.input.keyboard.addKey(Phaser.Keyboard.A);
@@ -3759,6 +3761,7 @@ var SpriterExample;
             // change char maps
             var charMaps = ["Green", "Brush"];
             var charmapID = 0;
+            // on C key cycle through all charmaps
             key = this.game.input.keyboard.addKey(Phaser.Keyboard.C);
             key.onDown.add(function () {
                 if (charmapID >= this._spriterGroup.entity.charMapsLength) {
@@ -3770,6 +3773,11 @@ var SpriterExample;
                     ++charmapID;
                 }
             }, this);
+            // on I key show / hide item attached to point
+            key = this.game.input.keyboard.addKey(Phaser.Keyboard.I);
+            key.onDown.add(function () {
+                this._item.exists = !this._item.exists;
+            }, this);
         };
         // -------------------------------------------------------------------------
         Test.prototype.update = function () {
@@ -3779,54 +3787,10 @@ var SpriterExample;
         Test.prototype.render = function () {
             this.game.debug.text("Playing animation: " + this._spriterGroup.currentAnimationName + " (Press A to next...)", 50, 30, "rgb(255, 255, 255)");
             this.game.debug.text("Press C to cycle charmaps", 50, 46, "rgb(255, 255, 255)");
-            this.game.debug.text(this._text, 180, 232, "rgb(255, 255, 255)");
+            this.game.debug.text("Press I to show / hide attached item (book)", 50, 62, "rgb(255, 255, 255)");
+            this.game.debug.text(this._text, 80, 232, "rgb(255, 255, 255)");
         };
         return Test;
-    })(Phaser.State);
+    }(Phaser.State));
     SpriterExample.Test = Test;
 })(SpriterExample || (SpriterExample = {}));
-var SpriterExample;
-(function (SpriterExample) {
-    var Global = (function () {
-        function Global() {
-        }
-        // game derived from Phaser.Game
-        Global.game = null;
-        // game size
-        Global.GAME_WIDTH = 640;
-        Global.GAME_HEIGHT = 640;
-        // assets path
-        Global.assetsPath = "assets/";
-        return Global;
-    })();
-    SpriterExample.Global = Global;
-})(SpriterExample || (SpriterExample = {}));
-var PhaserGlobal = {
-    stopFocus: true
-};
-// -------------------------------------------------------------------------
-window.onload = function () {
-    SpriterExample.Global.game = new SpriterExample.Game();
-};
-/// <reference path="../lib/phaser.d.ts" />
-var SpriterExample;
-(function (SpriterExample) {
-    var Game = (function (_super) {
-        __extends(Game, _super);
-        // -------------------------------------------------------------------------
-        function Game() {
-            Game.game = this;
-            // init game
-            _super.call(this, SpriterExample.Global.GAME_WIDTH, SpriterExample.Global.GAME_HEIGHT, Phaser.AUTO, "content", null /* , transparent, antialias, physicsConfig */);
-            // states
-            this.state.add("Boot", SpriterExample.Boot);
-            this.state.add("Preloader", SpriterExample.Preloader);
-            this.state.add("Test", SpriterExample.Test);
-            // start
-            this.state.start("Boot");
-        }
-        return Game;
-    })(Phaser.Game);
-    SpriterExample.Game = Game;
-})(SpriterExample || (SpriterExample = {}));
-//# sourceMappingURL=SpriterExample.js.map
